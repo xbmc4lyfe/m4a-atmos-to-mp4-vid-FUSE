@@ -1,0 +1,63 @@
+services:
+  fuse:
+    build:
+      context: .
+      target: runtime
+    image: m4a-atmos-to-mp4-vid-fuse:runtime
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    devices:
+      - /dev/fuse:/dev/fuse
+    environment:
+      RUST_LOG: ${RUST_LOG:-info}
+      RUST_BACKTRACE: ${RUST_BACKTRACE:-1}
+      WEBDAV_PORT: "8080"
+    entrypoint:
+      - /bin/sh
+      - -ec
+    command:
+      - |
+        m4a-atmos-fuse --source /mnt/source --mount /mnt/virtual --cache /var/cache/m4a-atmos-fuse --foreground &
+        fuse_pid=$$!
+        cleanup() {
+          kill "$$fuse_pid" 2>/dev/null || true
+          wait "$$fuse_pid" 2>/dev/null || true
+        }
+        trap cleanup INT TERM EXIT
+        sleep 1
+        rclone serve webdav /mnt/virtual --addr ":$${WEBDAV_PORT}" --read-only --dir-cache-time 5s --vfs-cache-mode off
+    ports:
+      - ${WEBDAV_PORT:-8080}:8080
+    volumes:
+      - ${SOURCE_DIR:-./media/source}:/mnt/source:ro
+      - ${CACHE_DIR:-./media/cache}:/var/cache/m4a-atmos-fuse
+      - type: bind
+        source: ${MOUNT_DIR:-./media/mount}
+        target: /mnt/virtual
+        bind:
+          propagation: rshared
+    restart: unless-stopped
+
+  dev:
+    build:
+      context: .
+      target: dev
+    image: m4a-atmos-to-mp4-vid-fuse:dev
+    working_dir: /workspace
+    environment:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: "1"
+    volumes:
+      - .:/workspace
+      - cargo-registry:/usr/local/cargo/registry
+      - cargo-git:/usr/local/cargo/git
+      - target:/workspace/target
+    profiles:
+      - dev
+
+volumes:
+  cargo-registry:
+  cargo-git:
+  target:

@@ -1,0 +1,30 @@
+# Rust
+/target/
+
+# Local root dotfiles and environment. Keep project metadata tracked.
+/.*
+!.gitignore
+!.dockerignore
+!.github/
+!.github/**
+.env
+.env.*
+
+# Local media, generated cache, and mount state
+/media/source/
+/media/cache/
+/media/mount/
+/mount/
+/cache/
+
+# Local agent planning/output
+/docs/superpowers/
+
+# Logs and editor/OS noise
+*.log
+*.pid
+*.tmp
+.DS_Store
+Thumbs.db
+*.swp
+*~
