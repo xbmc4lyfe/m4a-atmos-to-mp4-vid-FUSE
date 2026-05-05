@@ -1,0 +1,24 @@
+.git
+target
+
+# Local secrets and hidden machine state
+.env
+.env.*
+.*
+!.dockerignore
+!.gitignore
+
+# Local generated media/cache/mount state
+media/source
+media/cache
+media/mount
+mount
+cache
+
+# Local agent docs and logs
+docs/superpowers
+*.log
+*.pid
+*.tmp
+.DS_Store
+Thumbs.db
