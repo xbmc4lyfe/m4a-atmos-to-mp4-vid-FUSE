@@ -29,13 +29,13 @@ ci: fmt-check lint test
 
 up:
     mkdir -p media/source media/cache media/mount
-    {{ compose }} up -d --build fuse
+    {{ compose }} up -d --build fuse webdav
 
 down:
     {{ compose }} down --remove-orphans
 
 logs:
-    {{ compose }} logs -f fuse
+    {{ compose }} logs -f fuse webdav
 
 shell:
     {{ compose }} run --build --rm {{ dev_service }} bash

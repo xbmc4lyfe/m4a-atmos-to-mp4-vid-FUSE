@@ -160,6 +160,17 @@ impl AtmosFs {
         Ok(data)
     }
 
+    fn materialized_size_for_item(&self, item: &MediaItem) -> Result<u64> {
+        let cache_path = self
+            .cache
+            .cached_path_if_exists(item)
+            .map(Ok)
+            .unwrap_or_else(|| self.cache.ensure_cached(item))?;
+        Ok(std::fs::metadata(&cache_path)
+            .with_context(|| format!("failed to stat {}", cache_path.display()))?
+            .len())
+    }
+
     pub fn nodes(&self) -> Vec<NodeInfo> {
         let mut nodes = self.nodes.values().map(NodeInfo::from).collect::<Vec<_>>();
         nodes.sort_by_key(|node| node.ino);
@@ -187,16 +198,9 @@ impl AtmosFs {
             )),
             NodeKind::File { item_index } => {
                 let item = &self.items[item_index];
-                let size = if let Some(cache_path) = self.cache.cached_path_if_exists(item) {
-                    std::fs::metadata(&cache_path)
-                        .with_context(|| format!("failed to stat {}", cache_path.display()))?
-                        .len()
-                } else {
-                    item.size
-                };
                 Ok(file_attr(
                     node.ino,
-                    size,
+                    self.materialized_size_for_item(item)?,
                     FileType::RegularFile,
                     0o444,
                     item.mtime,
@@ -395,6 +399,20 @@ mod tests {
         }
     }
 
+    struct MaterializingCache {
+        path: PathBuf,
+    }
+
+    impl CacheProvider for MaterializingCache {
+        fn ensure_cached(&self, _item: &MediaItem) -> Result<PathBuf> {
+            Ok(self.path.clone())
+        }
+
+        fn cached_path_if_exists(&self, _item: &MediaItem) -> Option<PathBuf> {
+            None
+        }
+    }
+
     fn media(path: &str, virtual_path: &str) -> MediaItem {
         MediaItem {
             source_path: PathBuf::from(path),
@@ -429,6 +447,23 @@ mod tests {
         assert_eq!(AtmosFs::read_cached_slice(tmp.path(), 2, 4)?, b"2345");
         assert_eq!(AtmosFs::read_cached_slice(tmp.path(), 8, 99)?, b"89");
         assert!(AtmosFs::read_cached_slice(tmp.path(), 99, 10)?.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn materialized_size_uses_generated_mkv_size_when_cache_is_missing() -> Result<()> {
+        let tmp = tempfile::NamedTempFile::new()?;
+        std::fs::write(tmp.path(), b"generated mkv bytes")?;
+        let fs = AtmosFs::new(
+            vec![media("/src/album/song.m4a", "album/song.mkv")],
+            std::sync::Arc::new(MaterializingCache {
+                path: tmp.path().to_path_buf(),
+            }),
+        );
+
+        let size = fs.materialized_size_for_item(&fs.items[0])?;
+
+        assert_eq!(size, 19);
         Ok(())
     }
 }

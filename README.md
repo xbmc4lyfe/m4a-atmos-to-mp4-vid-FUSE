@@ -1,12 +1,12 @@
 # M4A Atmos to MKV FUSE WebDAV
 
-This project packages a Rust FUSE filesystem in Docker. It scans a read-only source tree for eligible `.m4a` Dolby Atmos EAC3 JOC audio files, exposes each accepted file as a virtual `.mkv`, and serves the mounted virtual output over WebDAV from the same container.
+This project packages a Rust FUSE filesystem in Docker. It scans a read-only source tree for eligible `.m4a` Dolby Atmos EAC3 JOC audio files, exposes each accepted file as a virtual `.mkv`, and serves the mounted virtual output over WebDAV.
 
 The generated MKV is intended to make audio-only Atmos files appear as video containers. On first access, the filesystem materializes a cached MKV with a still video stream and copied EAC3 audio by using `ffprobe` and `ffmpeg`.
 
 ## Docker Quick Start
 
-1. Put source media under `./media/source`, or point `SOURCE_DIR` at another directory.
+1. Put source media under `./media/source`, or edit the Compose source volume to point at the real media directory.
 1. Start the FUSE filesystem and WebDAV server:
 
 ```sh
@@ -16,19 +16,19 @@ just up
 1. Browse the WebDAV endpoint:
 
 ```text
-http://localhost:8080/
+http://localhost:9090/
 ```
 
-The default Compose setup builds the runtime image, mounts the source tree read-only, stores generated MKV files under `./media/cache`, and exposes the bind-mounted FUSE output through `rclone serve webdav`.
+The default Compose setup builds the runtime image, mounts the source tree read-only, stores generated MKV files under `./media/cache`, and exposes the bind-mounted FUSE output through a WebDAV service on `0.0.0.0:9090`.
 
 ## Volume Layout
 
-- `SOURCE_DIR` or `./media/source` mounts at `/mnt/source:ro` in the FUSE container.
-- `CACHE_DIR` or `./media/cache` mounts at `/var/cache/m4a-atmos-fuse` for generated MKV files and probe/transcode state.
-- `MOUNT_DIR` or `./media/mount` is a bind mount at `/mnt/virtual` in the FUSE/WebDAV container.
-- The same container serves `/mnt/virtual` over WebDAV on `WEBDAV_PORT` or port `8080`, avoiding cross-container FUSE mount propagation requirements.
+- `./media/source` mounts at `/mnt/source:ro` in the FUSE container. Put the source `.m4a` folder tree here, or edit the left side of that Compose volume to the real media directory.
+- `./media/cache` mounts at `/var/cache/m4a-atmos-fuse` for generated MKV files and probe/transcode state.
+- `./media/mount` is the bind-mounted FUSE output at `/mnt/virtual`.
+- The WebDAV service serves `/mnt/virtual` on `0.0.0.0:9090` and keeps directory listings cached in memory for 24 hours so very large libraries are not re-listed on every request.
 
-The virtual tree preserves relative folder layout. A source file such as `Album/Track.m4a` is exposed as `Album/Track.mkv` when it passes eligibility checks.
+The virtual tree preserves relative folder layout and exposes accepted source files as `.mkv`. A source file such as `Album/Track.m4a` is exposed as `Album/Track.mkv` when it passes eligibility checks.
 
 ## Runtime Requirements
 
@@ -69,7 +69,7 @@ just host-fmt-check
 
 ## Limitations
 
-- First access to a virtual `.mkv` can block while `ffprobe` and `ffmpeg` validate and materialize the cached file.
+- First access to a virtual `.mkv` can block while `ffprobe` and `ffmpeg` validate and materialize the cached file. Later playback can read from the generated cache.
 - The source tree is indexed at container startup. Restart the service after adding new files.
 - Only source `.m4a` files that probe as EAC3 and contain Atmos/JOC indicators are exposed.
 - Generated video is a still image track with copied audio, not a real music video.

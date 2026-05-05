@@ -4,7 +4,7 @@
 
 **Goal:** Build a Docker-packaged Rust FUSE filesystem that exposes eligible source `.m4a` Dolby Atmos EAC3 JOC audio files as generated `.mkv` video containers and serves the FUSE output over WebDAV.
 
-**Architecture:** The Rust binary mounts a read-only FUSE filesystem. It recursively indexes the source media tree, exposes only qualifying `.m4a` files as `.mkv` paths, and lazily runs `ffmpeg` into a cache file when a virtual `.mkv` is opened or read. Docker Compose runs the FUSE service with `/dev/fuse` access and serves the same mounted path over WebDAV from the runtime container.
+**Architecture:** The Rust binary mounts a read-only FUSE filesystem. It recursively indexes the source media tree, exposes only qualifying `.m4a` files as `.mkv` paths, and lazily runs `ffmpeg` into a cache file when a virtual `.mkv` is opened or read. Docker Compose runs a FUSE service with `/dev/fuse` access and a separate WebDAV service that serves the bind-mounted FUSE output on `0.0.0.0:9090`.
 
 **Tech Stack:** Rust, `fuser`, `clap`, `walkdir`, `serde_json`, `sha2`, `anyhow`, `ffmpeg`, `ffprobe`, Docker, Docker Compose, `rclone serve webdav`, Just.
 
@@ -20,7 +20,7 @@
 - `src/lib.rs`: testable module exports.
 - `README.md`: project goal, Docker-first usage, host-development notes.
 - `Dockerfile`: runtime image with Rust-built binary plus ffmpeg/fuse/rclone tools where needed.
-- `docker-compose.yml`: FUSE/WebDAV service with source, cache, and mount bind volumes.
+- `docker-compose.yml`: FUSE service plus WebDAV service with source, cache, and mount bind volumes.
 - `Justfile`: Docker-authoritative recipes for build, check, test, lint, format, run, logs, and cleanup.
 - `.gitignore`: standard Rust ignores plus local dotfiles/env and `docs/superpowers/`, while keeping `.gitignore`.
 - `.dockerignore`: keep build context small and avoid local secrets.
@@ -49,7 +49,9 @@
   - source media bind mount defaults to `./media/source:/mnt/source:ro`;
   - cache bind mount defaults to `./media/cache:/var/cache/m4a-atmos-fuse`;
   - shared FUSE output bind mount defaults to `./media/mount:/mnt/virtual`;
-  - the runtime container uses `rclone serve webdav /mnt/virtual` on port `8080`.
+  - the `webdav` service uses `rclone serve webdav /mnt/virtual` on `0.0.0.0:9090`;
+  - WebDAV uses `--dir-cache-time 24h` and `--poll-interval 0` so massive directory listings are cached in memory;
+  - Compose does not embed shell scripts; service commands are declarative argument lists.
 - [ ] Replace Make-style workflows with Just-only recipes:
   - `just build`, `just check`, `just test`, `just lint`, `just fmt`, `just ci`;
   - `just up`, `just down`, `just logs`, `just shell`;
