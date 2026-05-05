@@ -7,13 +7,13 @@ The generated MKV is intended to make audio-only Atmos files appear as video con
 ## Docker Quick Start
 
 1. Put source media under `./media/source`, or point `SOURCE_DIR` at another directory.
-2. Start the FUSE filesystem and WebDAV sidecar:
+1. Start the FUSE filesystem and WebDAV server:
 
 ```sh
 just up
 ```
 
-3. Browse the WebDAV endpoint:
+1. Browse the WebDAV endpoint:
 
 ```text
 http://localhost:8080/

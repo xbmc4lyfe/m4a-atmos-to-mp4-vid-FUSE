@@ -3,13 +3,14 @@ use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use sha2::{Digest, Sha256};
 
 use crate::media::MediaItem;
+use crate::process::wait_status_with_timeout;
 
 pub trait CommandRunner: Send + Sync {
     fn run(&self, program: &str, args: &[OsString]) -> Result<()>;
@@ -19,12 +20,12 @@ pub struct RealCommandRunner;
 
 impl CommandRunner for RealCommandRunner {
     fn run(&self, program: &str, args: &[OsString]) -> Result<()> {
-        let mut child = Command::new(program)
+        let child = Command::new(program)
             .args(args)
             .stdin(Stdio::null())
             .spawn()
             .with_context(|| format!("failed to execute {program}"))?;
-        let status = wait_status_with_timeout(&mut child, Duration::from_secs(30 * 60))?;
+        let status = wait_status_with_timeout(child, Duration::from_secs(30 * 60))?;
         if !status.success() {
             anyhow::bail!("{program} failed with status {status}");
         }
@@ -52,7 +53,7 @@ pub fn cache_key(path: &Path, size: u64, mtime: SystemTime) -> String {
 pub struct TranscodeCache {
     cache_dir: PathBuf,
     runner: Arc<dyn CommandRunner>,
-    locks: Mutex<HashMap<String, Arc<Mutex<()>>>>,
+    locks: Mutex<HashMap<String, Weak<Mutex<()>>>>,
 }
 
 impl TranscodeCache {
@@ -191,10 +192,23 @@ impl TranscodeCache {
 
     fn lock_for_key(&self, key: &str) -> Arc<Mutex<()>> {
         let mut locks = self.locks.lock().expect("cache lock map poisoned");
+        locks.retain(|_, lock| lock.strong_count() > 0);
+        if let Some(lock) = locks.get(key).and_then(Weak::upgrade) {
+            return lock;
+        }
+
+        let lock = Arc::new(Mutex::new(()));
+        locks.insert(key.to_string(), Arc::downgrade(&lock));
+        lock
+    }
+
+    #[cfg(test)]
+    fn live_lock_count(&self) -> usize {
+        let locks = self.locks.lock().expect("cache lock map poisoned");
         locks
-            .entry(key.to_string())
-            .or_insert_with(|| Arc::new(Mutex::new(())))
-            .clone()
+            .values()
+            .filter(|lock| lock.strong_count() > 0)
+            .count()
     }
 }
 
@@ -205,24 +219,6 @@ impl crate::fs::CacheProvider for TranscodeCache {
 
     fn cached_path_if_exists(&self, item: &MediaItem) -> Option<PathBuf> {
         TranscodeCache::cached_path_if_exists(self, item)
-    }
-}
-
-fn wait_status_with_timeout(
-    child: &mut std::process::Child,
-    timeout: Duration,
-) -> Result<std::process::ExitStatus> {
-    let start = SystemTime::now();
-    loop {
-        if let Some(status) = child.try_wait()? {
-            return Ok(status);
-        }
-        if start.elapsed().unwrap_or_default() > timeout {
-            let _ = child.kill();
-            let _ = child.wait();
-            anyhow::bail!("command exceeded {} seconds", timeout.as_secs());
-        }
-        std::thread::sleep(Duration::from_millis(100));
     }
 }
 
@@ -310,5 +306,22 @@ mod tests {
         );
         assert!(commands[2].1.iter().any(|arg| arg == "-shortest"));
         Ok(())
+    }
+
+    #[test]
+    fn lock_table_does_not_retain_strong_locks_after_use() {
+        let cache = TranscodeCache::new(
+            PathBuf::from("/tmp/m4a-atmos-test-cache"),
+            std::sync::Arc::new(RecordingRunner {
+                commands: Mutex::new(Vec::new()),
+            }),
+        );
+
+        let lock = cache.lock_for_key("track");
+        assert_eq!(cache.live_lock_count(), 1);
+
+        drop(lock);
+
+        assert_eq!(cache.live_lock_count(), 0);
     }
 }
