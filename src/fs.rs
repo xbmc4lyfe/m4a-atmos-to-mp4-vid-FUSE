@@ -1,16 +1,22 @@
 use std::collections::{BTreeMap, HashMap};
-use std::ffi::{OsStr, OsString};
+#[cfg(not(test))]
+use std::ffi::OsStr;
+use std::ffi::OsString;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+#[cfg(not(test))]
+use std::time::SystemTime;
 
 use anyhow::{Context, Result};
+#[cfg(not(test))]
 use fuser::{
     Errno, FileAttr, FileHandle, FileType, Filesystem, FopenFlags, Generation, INodeNo,
     OpenAccMode, OpenFlags, ReplyAttr, ReplyData, ReplyDirectory, ReplyEntry, ReplyOpen, Request,
 };
+#[cfg(not(test))]
+use std::time::Duration;
 
 use crate::media::MediaItem;
 
@@ -28,12 +34,14 @@ pub struct NodeInfo {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(test, allow(dead_code))]
 enum NodeKind {
     Directory { children: BTreeMap<OsString, u64> },
     File { item_index: usize },
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(test, allow(dead_code))]
 struct Node {
     ino: u64,
     parent: u64,
@@ -42,6 +50,7 @@ struct Node {
     kind: NodeKind,
 }
 
+#[cfg_attr(test, allow(dead_code))]
 pub struct AtmosFs {
     items: Vec<MediaItem>,
     cache: Arc<dyn CacheProvider>,
@@ -157,6 +166,7 @@ impl AtmosFs {
         nodes
     }
 
+    #[cfg(not(test))]
     fn lookup_child(&self, parent: u64, name: &OsStr) -> Option<&Node> {
         let parent = self.nodes.get(&parent)?;
         let NodeKind::Directory { children } = &parent.kind else {
@@ -165,6 +175,7 @@ impl AtmosFs {
         children.get(name).and_then(|ino| self.nodes.get(ino))
     }
 
+    #[cfg(not(test))]
     fn attr_for_node(&self, node: &Node) -> Result<FileAttr> {
         match node.kind {
             NodeKind::Directory { .. } => Ok(file_attr(
@@ -194,6 +205,7 @@ impl AtmosFs {
         }
     }
 
+    #[cfg(not(test))]
     fn cached_path_for_node(&self, ino: u64) -> Result<PathBuf> {
         let node = self.nodes.get(&ino).context("inode not found")?;
         let NodeKind::File { item_index } = node.kind else {
@@ -214,6 +226,7 @@ impl NodeInfo {
     }
 }
 
+#[cfg(not(test))]
 impl Filesystem for AtmosFs {
     fn lookup(&self, _req: &Request, parent: INodeNo, name: &OsStr, reply: ReplyEntry) {
         let Some(node) = self.lookup_child(parent.0, name) else {
@@ -334,14 +347,17 @@ fn insert_child(nodes: &mut HashMap<u64, Node>, parent: u64, name: OsString, ino
     }
 }
 
+#[cfg(not(test))]
 fn current_time() -> SystemTime {
     SystemTime::now()
 }
 
+#[cfg(not(test))]
 fn ttl() -> Duration {
     Duration::from_secs(1)
 }
 
+#[cfg(not(test))]
 fn file_attr(ino: u64, size: u64, kind: FileType, perm: u16, mtime: SystemTime) -> FileAttr {
     FileAttr {
         ino: INodeNo(ino),

@@ -8,6 +8,8 @@ use log::warn;
 use serde_json::Value;
 use walkdir::WalkDir;
 
+use crate::process::wait_output_with_timeout;
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct MediaItem {
     pub source_path: PathBuf,
@@ -36,7 +38,7 @@ impl ProbeRunner for RealProbeRunner {
             .spawn()
             .with_context(|| format!("failed to execute ffprobe for {}", path.display()))?;
 
-        let output = wait_with_timeout(child, Duration::from_secs(120))
+        let output = wait_output_with_timeout(child, Duration::from_secs(120))
             .with_context(|| format!("ffprobe timed out for {}", path.display()))?;
         if !output.status.success() {
             anyhow::bail!("ffprobe failed for {}", path.display());
@@ -106,8 +108,7 @@ pub fn is_atmos_eac3_probe_json(json: &str) -> bool {
             })
         });
 
-    let markers = json.to_ascii_lowercase();
-    has_eac3_audio && (markers.contains("joc") || markers.contains("atmos"))
+    has_eac3_audio && has_atmos_marker(&value)
 }
 
 pub fn scan_source(source_root: &Path, runner: &dyn ProbeRunner) -> Result<Vec<MediaItem>> {
@@ -166,24 +167,47 @@ pub fn scan_source(source_root: &Path, runner: &dyn ProbeRunner) -> Result<Vec<M
     Ok(items)
 }
 
-fn wait_with_timeout(
-    mut child: std::process::Child,
-    timeout: Duration,
-) -> Result<std::process::Output> {
-    let start = SystemTime::now();
-    loop {
-        if child.try_wait()?.is_some() {
-            return child
-                .wait_with_output()
-                .context("failed to collect ffprobe output");
-        }
-        if start.elapsed().unwrap_or_default() > timeout {
-            let _ = child.kill();
-            let _ = child.wait();
-            anyhow::bail!("command exceeded {} seconds", timeout.as_secs());
-        }
-        std::thread::sleep(Duration::from_millis(100));
+fn has_atmos_marker(value: &Value) -> bool {
+    let stream_marker = value
+        .get("streams")
+        .and_then(Value::as_array)
+        .is_some_and(|streams| streams.iter().any(stream_has_atmos_marker));
+
+    let format_marker = value
+        .get("format")
+        .and_then(|format| format.get("tags"))
+        .is_some_and(value_contains_atmos_marker);
+
+    stream_marker || format_marker
+}
+
+fn stream_has_atmos_marker(stream: &Value) -> bool {
+    ["profile", "codec_tag_string", "codec_long_name"]
+        .iter()
+        .any(|field| {
+            stream
+                .get(field)
+                .and_then(Value::as_str)
+                .is_some_and(str_contains_atmos_marker)
+        })
+        || stream.get("tags").is_some_and(value_contains_atmos_marker)
+        || stream
+            .get("side_data_list")
+            .is_some_and(value_contains_atmos_marker)
+}
+
+fn value_contains_atmos_marker(value: &Value) -> bool {
+    match value {
+        Value::String(text) => str_contains_atmos_marker(text),
+        Value::Array(values) => values.iter().any(value_contains_atmos_marker),
+        Value::Object(values) => values.values().any(value_contains_atmos_marker),
+        _ => false,
     }
+}
+
+fn str_contains_atmos_marker(text: &str) -> bool {
+    text.split(|character: char| !character.is_ascii_alphanumeric())
+        .any(|token| token.eq_ignore_ascii_case("joc") || token.eq_ignore_ascii_case("atmos"))
 }
 
 #[cfg(test)]
@@ -229,6 +253,9 @@ mod tests {
         ));
         assert!(!is_atmos_eac3_probe_json(
             r#"{"streams":[{"codec_type":"audio","codec_name":"eac3"}]}"#
+        ));
+        assert!(!is_atmos_eac3_probe_json(
+            r#"{"streams":[{"codec_type":"audio","codec_name":"eac3"}],"format":{"filename":"/music/Atmos Album/Track.m4a"}}"#
         ));
     }
 

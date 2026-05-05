@@ -55,11 +55,20 @@ RUN apt-get update \
         fuse3 \
         rclone \
     && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system appuser \
+    && useradd --system --gid appuser --home-dir /home/appuser --create-home appuser \
     && mkdir -p /mnt/source /mnt/virtual /var/cache/m4a-atmos-fuse
 
 COPY --from=builder /usr/local/bin/m4a-atmos-fuse /usr/local/bin/m4a-atmos-fuse
 
+RUN chown appuser:appuser /usr/local/bin/m4a-atmos-fuse \
+    && chmod 0755 /usr/local/bin/m4a-atmos-fuse \
+    && chown -R appuser:appuser /mnt/source /mnt/virtual /var/cache/m4a-atmos-fuse \
+    && chmod 0755 /mnt/source /mnt/virtual /var/cache/m4a-atmos-fuse
+
 VOLUME ["/mnt/source", "/mnt/virtual", "/var/cache/m4a-atmos-fuse"]
+
+USER appuser
 
 ENTRYPOINT ["/usr/local/bin/m4a-atmos-fuse"]
 CMD ["--source", "/mnt/source", "--mount", "/mnt/virtual", "--cache", "/var/cache/m4a-atmos-fuse", "--foreground"]
