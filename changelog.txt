@@ -1,0 +1,5 @@
+1.0.10 - 2026-05-06
+- Docker runtime now uses Debian Trixie ffprobe/ffmpeg so real E-AC-3 JOC Atmos M4A files probe as Dolby Digital Plus Atmos.
+- Default Compose setup uses ./sample, ./cache, and ./virtual, and serves WebDAV on 0.0.0.0:9090.
+- Added sample/sample.m4a for local smoke testing with just up.
+- Fixed still-image muxing for odd-sized cover art by scaling to even H.264 dimensions.
