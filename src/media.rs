@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime};
@@ -28,10 +29,7 @@ pub struct RealProbeRunner;
 impl ProbeRunner for RealProbeRunner {
     fn probe_json(&self, path: &Path) -> Result<String> {
         let child = Command::new("ffprobe")
-            .arg("-nostdin")
-            .args(["-v", "quiet", "-print_format", "json"])
-            .args(["-show_streams", "-show_format"])
-            .arg(path)
+            .args(ffprobe_args(path))
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -46,6 +44,21 @@ impl ProbeRunner for RealProbeRunner {
 
         String::from_utf8(output.stdout).context("ffprobe emitted non-UTF-8 JSON")
     }
+}
+
+fn ffprobe_args(path: &Path) -> Vec<OsString> {
+    [
+        "-v",
+        "quiet",
+        "-print_format",
+        "json",
+        "-show_streams",
+        "-show_format",
+    ]
+    .into_iter()
+    .map(OsString::from)
+    .chain(std::iter::once(path.as_os_str().to_os_string()))
+    .collect()
 }
 
 pub fn is_m4a_path(path: &Path) -> bool {
@@ -240,6 +253,14 @@ mod tests {
         assert!(is_m4a_path(Path::new("track.m4a")));
         assert!(is_m4a_path(Path::new("track.M4A")));
         assert!(!is_m4a_path(Path::new("track.mp4")));
+    }
+
+    #[test]
+    fn ffprobe_args_do_not_use_ffmpeg_only_stdin_flag() {
+        let args = ffprobe_args(Path::new("track.m4a"));
+
+        assert!(!args.iter().any(|arg| arg == "-nostdin"));
+        assert_eq!(args.last(), Some(&OsString::from("track.m4a")));
     }
 
     #[test]

@@ -4,7 +4,7 @@
 
 **Goal:** Build a Docker-packaged Rust FUSE filesystem that exposes eligible source `.m4a` Dolby Atmos EAC3 JOC audio files as generated `.mkv` video containers and serves the FUSE output over WebDAV.
 
-**Architecture:** The Rust binary mounts a read-only FUSE filesystem. It recursively indexes the source media tree, exposes only qualifying `.m4a` files as `.mkv` paths, and lazily runs `ffmpeg` into a cache file when a virtual `.mkv` is opened or read. Docker Compose runs a FUSE service with `/dev/fuse` access and a separate WebDAV service that serves the bind-mounted FUSE output on `0.0.0.0:9090`.
+**Architecture:** The Rust binary mounts a read-only FUSE filesystem. It recursively indexes the source media tree, exposes only qualifying `.m4a` files as `.mkv` paths, and lazily runs `ffmpeg` into a cache file when a virtual `.mkv` is opened or read. Docker Compose runs the FUSE service with `/dev/fuse` access, and the runtime image starts WebDAV after the FUSE mount is ready.
 
 **Tech Stack:** Rust, `fuser`, `clap`, `walkdir`, `serde_json`, `sha2`, `anyhow`, `ffmpeg`, `ffprobe`, Docker, Docker Compose, `rclone serve webdav`, Just.
 
@@ -19,8 +19,8 @@
 - `src/fs.rs`: read-only FUSE filesystem operations backed by indexed media and transcode cache files.
 - `src/lib.rs`: testable module exports.
 - `README.md`: project goal, Docker-first usage, host-development notes.
-- `Dockerfile`: runtime image with Rust-built binary plus ffmpeg/fuse/rclone tools where needed.
-- `docker-compose.yml`: FUSE service plus WebDAV service with source, cache, and mount bind volumes.
+- `Dockerfile`: runtime image with Rust-built binary plus Debian Trixie ffmpeg/ffprobe, FUSE, and rclone tools where needed.
+- `docker-compose.yml`: FUSE/WebDAV service with source, cache, and mount bind volumes.
 - `Justfile`: Docker-authoritative recipes for build, check, test, lint, format, run, logs, and cleanup.
 - `.gitignore`: standard Rust ignores plus local dotfiles/env and `docs/superpowers/`, while keeping `.gitignore`.
 - `.dockerignore`: keep build context small and avoid local secrets.
@@ -38,20 +38,20 @@
 - [ ] Replace `.gitignore` with standard Rust ignores and local-file protection:
   - ignore `/target/`, `Cargo.lock` only if this becomes a library is not desired, but for this binary keep `Cargo.lock` tracked;
   - ignore `.env`, `.env.*`, all root dotfiles by default via `.*`, then explicitly unignore `.gitignore`, `.dockerignore`, and `.github/`;
-  - ignore `docs/superpowers/`, local media/cache/mount folders, logs, and OS/editor noise.
-- [ ] Update `.dockerignore` to exclude `.git`, `target`, local env/dotfiles, media/cache/mount folders, logs, and `docs/superpowers/`, while allowing tracked source/config files.
+  - ignore `docs/superpowers/`, local sample/cache/virtual folders, logs, and OS/editor noise.
+- [ ] Update `.dockerignore` to exclude `.git`, `target`, local env/dotfiles, sample/cache/virtual folders, logs, and `docs/superpowers/`, while allowing tracked source/config files.
 - [ ] Make Docker the authoritative runtime:
   - a builder stage compiles the Rust binary;
-  - a runtime stage includes `ffmpeg`, `ffprobe`, `fuse3`, and certificates;
+  - a runtime stage includes Debian Trixie `ffmpeg`/`ffprobe`, `fuse3`, and certificates;
   - default command mounts `/mnt/source` to `/mnt/virtual` with `/var/cache/m4a-atmos-fuse`.
 - [ ] Update Compose:
   - `fuse` service gets `/dev/fuse`, `SYS_ADMIN`, and unconfined AppArmor;
-  - source media bind mount defaults to `./media/source:/mnt/source:ro`;
-  - cache bind mount defaults to `./media/cache:/var/cache/m4a-atmos-fuse`;
-  - shared FUSE output bind mount defaults to `./media/mount:/mnt/virtual`;
-  - the `webdav` service uses `rclone serve webdav /mnt/virtual` on `0.0.0.0:9090`;
+  - source media bind mount defaults to `./sample:/mnt/source:ro`;
+  - cache bind mount defaults to `./cache:/var/cache/m4a-atmos-fuse`;
+  - shared FUSE output bind mount defaults to `./virtual:/mnt/virtual`;
+  - the runtime WebDAV entrypoint uses `rclone serve webdav /mnt/virtual` on `0.0.0.0:9090`;
   - WebDAV uses `--dir-cache-time 24h` and `--poll-interval 0` so massive directory listings are cached in memory;
-  - Compose does not embed shell scripts; service commands are declarative argument lists.
+  - Compose does not embed shell scripts; the WebDAV/FUSE startup entrypoint lives in the runtime image.
 - [ ] Replace Make-style workflows with Just-only recipes:
   - `just build`, `just check`, `just test`, `just lint`, `just fmt`, `just ci`;
   - `just up`, `just down`, `just logs`, `just shell`;
@@ -109,7 +109,7 @@
 - [ ] Use ffmpeg command shape:
   - cover path: `ffmpeg -y -i input.m4a -an -vcodec copy cover.jpg`;
   - black fallback: `ffmpeg -y -f lavfi -i color=c=black:s=1920x1080:r=1 -frames:v 1 black.jpg`;
-  - mux: `ffmpeg -y -loop 1 -i image.jpg -i input.m4a -map 0:v:0 -map 1:a:0 -c:v libx264 -tune stillimage -pix_fmt yuv420p -c:a copy -shortest output.tmp.mkv`.
+  - mux: `ffmpeg -y -loop 1 -i image.jpg -i input.m4a -map 0:v:0 -map 1:a:0 -c:v libx264 -tune stillimage -vf scale=trunc(iw/2)*2:trunc(ih/2)*2 -pix_fmt yuv420p -c:a copy -shortest output.tmp.mkv`.
 - [ ] Add unit tests for cache key changes and command planning without requiring real media.
 
 ## Task 4: Read-Only FUSE Filesystem

@@ -10,11 +10,16 @@
 .env
 .env.*
 
+# Committed local smoke sample; keep any other sample drops local.
+/sample/*
+!/sample/sample.m4a
+
 # Local media, generated cache, and mount state
 /media/source/
 /media/cache/
 /media/mount/
 /mount/
+/virtual/
 /cache/
 
 # Local agent planning/output

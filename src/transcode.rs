@@ -164,6 +164,8 @@ impl TranscodeCache {
                     "libx264".into(),
                     "-tune".into(),
                     "stillimage".into(),
+                    "-vf".into(),
+                    "scale=trunc(iw/2)*2:trunc(ih/2)*2".into(),
                     "-pix_fmt".into(),
                     "yuv420p".into(),
                     "-c:a".into(),
@@ -305,6 +307,13 @@ mod tests {
                 .any(|arg| arg.to_string_lossy().contains("color=c=black"))
         );
         assert!(commands[2].1.iter().any(|arg| arg == "-shortest"));
+        assert!(commands[2].1.iter().any(|arg| arg == "-vf"));
+        assert!(
+            commands[2]
+                .1
+                .iter()
+                .any(|arg| arg.to_string_lossy().contains("trunc(iw/2)*2"))
+        );
         Ok(())
     }
 

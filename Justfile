@@ -28,14 +28,14 @@ fmt-check:
 ci: fmt-check lint test
 
 up:
-    mkdir -p media/source media/cache media/mount
-    {{ compose }} up -d --build fuse webdav
+    mkdir -p sample cache virtual
+    {{ compose }} up -d --build fuse
 
 down:
     {{ compose }} down --remove-orphans
 
 logs:
-    {{ compose }} logs -f fuse webdav
+    {{ compose }} logs -f fuse
 
 shell:
     {{ compose }} run --build --rm {{ dev_service }} bash

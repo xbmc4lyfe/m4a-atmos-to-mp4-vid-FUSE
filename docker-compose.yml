@@ -13,58 +13,24 @@ services:
     environment:
       RUST_LOG: ${RUST_LOG:-info}
       RUST_BACKTRACE: ${RUST_BACKTRACE:-1}
-    command:
-      - --source
-      - /mnt/source
-      - --mount
-      - /mnt/virtual
-      - --cache
-      - /var/cache/m4a-atmos-fuse
-      - --foreground
+      WEBDAV_ADDR: 0.0.0.0:9090
+      WEBDAV_DIR_CACHE_TIME: 24h
+    entrypoint:
+      - /usr/local/bin/m4a-atmos-webdav
     healthcheck:
       test: ["CMD", "mountpoint", "-q", "/mnt/virtual"]
       interval: 2s
       timeout: 1s
       retries: 30
       start_period: 2s
-    volumes:
-      - ./media/source:/mnt/source:ro
-      - ./media/cache:/var/cache/m4a-atmos-fuse
-      - type: bind
-        source: ./media/mount
-        target: /mnt/virtual
-        bind:
-          propagation: rshared
-    restart: unless-stopped
-
-  webdav:
-    image: m4a-atmos-to-mp4-vid-fuse:runtime
-    entrypoint: ["rclone"]
-    command:
-      - serve
-      - webdav
-      - /mnt/virtual
-      - --addr
-      - 0.0.0.0:9090
-      - --read-only
-      - --dir-cache-time
-      - 24h
-      - --poll-interval
-      - "0"
-      - --vfs-cache-mode
-      - "off"
-    depends_on:
-      fuse:
-        condition: service_healthy
     ports:
       - 0.0.0.0:9090:9090
     volumes:
+      - ./sample:/mnt/source:ro
+      - ./cache:/var/cache/m4a-atmos-fuse
       - type: bind
-        source: ./media/mount
+        source: ./virtual
         target: /mnt/virtual
-        read_only: true
-        bind:
-          propagation: rslave
     restart: unless-stopped
 
   dev:

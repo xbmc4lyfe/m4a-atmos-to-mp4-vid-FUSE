@@ -6,7 +6,7 @@ The generated MKV is intended to make audio-only Atmos files appear as video con
 
 ## Docker Quick Start
 
-1. Put source media under `./media/source`, or edit the Compose source volume to point at the real media directory.
+1. Put source media under `./sample`, or edit the Compose source volume to point at the real media directory.
 1. Start the FUSE filesystem and WebDAV server:
 
 ```sh
@@ -19,13 +19,13 @@ just up
 http://localhost:9090/
 ```
 
-The default Compose setup builds the runtime image, mounts the source tree read-only, stores generated MKV files under `./media/cache`, and exposes the bind-mounted FUSE output through a WebDAV service on `0.0.0.0:9090`.
+The default Compose setup builds the runtime image, mounts `./sample` read-only, stores generated MKV files under `./cache`, and exposes the FUSE output from `./virtual` through WebDAV on `0.0.0.0:9090`.
 
 ## Volume Layout
 
-- `./media/source` mounts at `/mnt/source:ro` in the FUSE container. Put the source `.m4a` folder tree here, or edit the left side of that Compose volume to the real media directory.
-- `./media/cache` mounts at `/var/cache/m4a-atmos-fuse` for generated MKV files and probe/transcode state.
-- `./media/mount` is the bind-mounted FUSE output at `/mnt/virtual`.
+- `./sample` mounts at `/mnt/source:ro` in the FUSE container. Put the source `.m4a` folder tree here, or edit the left side of that Compose volume to the real media directory.
+- `./cache` mounts at `/var/cache/m4a-atmos-fuse` for generated MKV files and probe/transcode state.
+- `./virtual` is the bind-mounted FUSE output at `/mnt/virtual`.
 - The WebDAV service serves `/mnt/virtual` on `0.0.0.0:9090` and keeps directory listings cached in memory for 24 hours so very large libraries are not re-listed on every request.
 
 The virtual tree preserves relative folder layout and exposes accepted source files as `.mkv`. A source file such as `Album/Track.m4a` is exposed as `Album/Track.mkv` when it passes eligibility checks.
@@ -37,7 +37,7 @@ The FUSE service runs with `/dev/fuse`, `SYS_ADMIN`, and unconfined AppArmor bec
 The runtime image includes:
 
 - the compiled Rust filesystem binary;
-- `ffmpeg` and `ffprobe`;
+- Debian Trixie `ffmpeg` and `ffprobe`, which report the EAC3 Atmos profile used for eligibility checks;
 - `fuse3`;
 - `rclone` for WebDAV serving;
 - CA certificates.

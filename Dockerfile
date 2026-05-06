@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM rust:1-bookworm AS builder
+FROM rust:1-trixie AS builder
 
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -21,7 +21,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cargo build --release --locked \
     && cp target/release/m4a_atmos_to_mp4_vid_fuse /usr/local/bin/m4a-atmos-fuse
 
-FROM rust:1-bookworm AS dev
+FROM rust:1-trixie AS dev
 
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -44,7 +44,7 @@ COPY src ./src
 
 CMD ["cargo", "test", "--all-targets", "--all-features"]
 
-FROM debian:bookworm-slim AS runtime
+FROM debian:trixie-slim AS runtime
 
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -60,9 +60,12 @@ RUN apt-get update \
     && mkdir -p /mnt/source /mnt/virtual /var/cache/m4a-atmos-fuse
 
 COPY --from=builder /usr/local/bin/m4a-atmos-fuse /usr/local/bin/m4a-atmos-fuse
+COPY scripts/m4a-atmos-webdav /usr/local/bin/m4a-atmos-webdav
 
 RUN chown appuser:appuser /usr/local/bin/m4a-atmos-fuse \
+    && chown appuser:appuser /usr/local/bin/m4a-atmos-webdav \
     && chmod 0755 /usr/local/bin/m4a-atmos-fuse \
+    && chmod 0755 /usr/local/bin/m4a-atmos-webdav \
     && chown -R appuser:appuser /mnt/source /mnt/virtual /var/cache/m4a-atmos-fuse \
     && chmod 0755 /mnt/source /mnt/virtual /var/cache/m4a-atmos-fuse
 

@@ -1,0 +1,55 @@
+#!/bin/sh
+set -eu
+
+source_dir="${SOURCE_DIR:-/mnt/source}"
+mount_dir="${MOUNT_DIR:-/mnt/virtual}"
+cache_dir="${CACHE_DIR:-/var/cache/m4a-atmos-fuse}"
+webdav_addr="${WEBDAV_ADDR:-0.0.0.0:9090}"
+dir_cache_time="${WEBDAV_DIR_CACHE_TIME:-24h}"
+ready_timeout="${READY_TIMEOUT:-30}"
+ready_interval="${READY_INTERVAL:-1}"
+
+fuse_pid=0
+
+cleanup() {
+  if [ "$fuse_pid" -ne 0 ]; then
+    kill "$fuse_pid" 2>/dev/null || true
+    wait "$fuse_pid" 2>/dev/null || true
+  fi
+}
+
+trap cleanup INT TERM EXIT
+
+m4a-atmos-fuse \
+  --source "$source_dir" \
+  --mount "$mount_dir" \
+  --cache "$cache_dir" \
+  --foreground &
+fuse_pid=$!
+
+ready_elapsed=0
+while true; do
+  if ! kill -0 "$fuse_pid" 2>/dev/null; then
+    cleanup
+    exit 1
+  fi
+
+  if mountpoint -q "$mount_dir" 2>/dev/null || grep -qs " $mount_dir " /proc/mounts; then
+    break
+  fi
+
+  if [ "$ready_elapsed" -ge "$ready_timeout" ]; then
+    cleanup
+    exit 1
+  fi
+
+  sleep "$ready_interval"
+  ready_elapsed=$((ready_elapsed + ready_interval))
+done
+
+exec rclone serve webdav "$mount_dir" \
+  --addr "$webdav_addr" \
+  --read-only \
+  --dir-cache-time "$dir_cache_time" \
+  --poll-interval 0 \
+  --vfs-cache-mode off

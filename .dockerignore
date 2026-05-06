@@ -9,10 +9,12 @@ target
 !.gitignore
 
 # Local generated media/cache/mount state
+sample
 media/source
 media/cache
 media/mount
 mount
+virtual
 cache
 
 # Local agent docs and logs
