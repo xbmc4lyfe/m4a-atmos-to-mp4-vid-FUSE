@@ -1,5 +1,7 @@
 # M4A Atmos to MKV FUSE WebDAV
 
+![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/Appz4Fun/m4a-atmos-to-mp4-vid-FUSE?utm_source=oss&utm_medium=github&utm_campaign=Appz4Fun%2Fm4a-atmos-to-mp4-vid-FUSE&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
+
 This project packages a Rust FUSE filesystem in Docker. It scans a read-only source tree for eligible `.m4a` Dolby Atmos EAC3 JOC audio files, exposes each accepted file as a virtual `.mkv`, and serves the mounted virtual output over WebDAV.
 
 The generated MKV is intended to make audio-only Atmos files appear as video containers. On first access, the filesystem materializes a cached MKV with a still video stream and copied EAC3 audio by using `ffprobe` and `ffmpeg`.
