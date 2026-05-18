@@ -153,7 +153,9 @@ impl AtmosFs {
             File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
         file.seek(SeekFrom::Start(offset))
             .with_context(|| format!("failed to seek {}", path.display()))?;
-        let mut data = Vec::new();
+        // Pre-allocate the vector with exactly size + 1 to prevent read_to_end
+        // from reallocating again when checking for EOF. FUSE chunk sizes are known.
+        let mut data = Vec::with_capacity(size as usize + 1);
         file.take(u64::from(size))
             .read_to_end(&mut data)
             .with_context(|| format!("failed to read {}", path.display()))?;
