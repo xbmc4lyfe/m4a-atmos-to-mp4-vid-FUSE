@@ -42,12 +42,16 @@ pub fn cache_key(path: &Path, size: u64, mtime: SystemTime) -> String {
     let duration = mtime.duration_since(UNIX_EPOCH).unwrap_or_default();
     hasher.update(duration.as_secs().to_le_bytes());
     hasher.update(duration.subsec_nanos().to_le_bytes());
-    hasher
-        .finalize()
-        .as_slice()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+    let hash = hasher.finalize();
+    // ⚡ Bolt optimization: Avoid formatting overhead in a loop.
+    // Instead of allocating a String per byte via format!() and collecting them,
+    // we pre-allocate the target string and format bytes directly into it.
+    let mut s = String::with_capacity(64);
+    for byte in hash {
+        use std::fmt::Write;
+        let _ = write!(&mut s, "{byte:02x}");
+    }
+    s
 }
 
 pub struct TranscodeCache {
