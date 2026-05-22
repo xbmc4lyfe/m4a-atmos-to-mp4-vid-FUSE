@@ -35,6 +35,10 @@ pub fn wait_status_with_timeout(child: Child, timeout: Duration) -> Result<ExitS
 
 fn wait_child_status_with_timeout(child: &mut Child, timeout: Duration) -> Result<ExitStatus> {
     let start = Instant::now();
+    // ⚡ Bolt: Exponential backoff for polling sleep.
+    // This dramatically reduces latency overhead for fast processes like `ffprobe`
+    // which execute in ~10-40ms, while avoiding CPU thrashing for long-running processes like `ffmpeg`.
+    let mut sleep_time = Duration::from_millis(1);
     loop {
         if let Some(status) = child.try_wait()? {
             return Ok(status);
@@ -44,7 +48,8 @@ fn wait_child_status_with_timeout(child: &mut Child, timeout: Duration) -> Resul
             let _ = child.wait();
             anyhow::bail!("command exceeded {} seconds", timeout.as_secs());
         }
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(sleep_time);
+        sleep_time = std::cmp::min(sleep_time * 2, Duration::from_millis(100));
     }
 }
 
