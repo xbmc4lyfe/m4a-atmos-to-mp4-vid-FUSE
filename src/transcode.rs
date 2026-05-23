@@ -42,12 +42,18 @@ pub fn cache_key(path: &Path, size: u64, mtime: SystemTime) -> String {
     let duration = mtime.duration_since(UNIX_EPOCH).unwrap_or_default();
     hasher.update(duration.as_secs().to_le_bytes());
     hasher.update(duration.subsec_nanos().to_le_bytes());
-    hasher
-        .finalize()
-        .as_slice()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+
+    // Bolt: Optimized FUSE hot path cache key hex formatting
+    // Instead of mapping and collecting individual Strings for each byte, we pre-allocate
+    // a single 64-character String and write into it. This avoids 32 small heap allocations
+    // per FUSE `read` or `getattr` check, drastically reducing I/O latency.
+    use std::fmt::Write;
+    let digest = hasher.finalize();
+    let mut result = String::with_capacity(64);
+    for byte in digest.as_slice() {
+        write!(&mut result, "{byte:02x}").unwrap();
+    }
+    result
 }
 
 pub struct TranscodeCache {
