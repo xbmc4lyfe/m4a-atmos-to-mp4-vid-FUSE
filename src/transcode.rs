@@ -42,12 +42,15 @@ pub fn cache_key(path: &Path, size: u64, mtime: SystemTime) -> String {
     let duration = mtime.duration_since(UNIX_EPOCH).unwrap_or_default();
     hasher.update(duration.as_secs().to_le_bytes());
     hasher.update(duration.subsec_nanos().to_le_bytes());
-    hasher
-        .finalize()
-        .as_slice()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+    use std::fmt::Write;
+    let bytes = hasher.finalize();
+    // Optimization: Pre-allocate a single String to avoid dynamic allocations
+    // per byte in the hot path.
+    let mut result = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        write!(&mut result, "{byte:02x}").unwrap();
+    }
+    result
 }
 
 pub struct TranscodeCache {
@@ -66,10 +69,10 @@ impl TranscodeCache {
     }
 
     pub fn cached_path(&self, item: &MediaItem) -> PathBuf {
-        self.cache_dir.join(format!(
-            "{}.mkv",
-            cache_key(&item.source_path, item.size, item.mtime)
-        ))
+        let mut key = cache_key(&item.source_path, item.size, item.mtime);
+        // Optimization: push_str avoids a format! allocation
+        key.push_str(".mkv");
+        self.cache_dir.join(key)
     }
 
     pub fn cached_path_if_exists(&self, item: &MediaItem) -> Option<PathBuf> {
