@@ -1,0 +1,22 @@
+--- src/transcode.rs
++++ src/transcode.rs
+@@ -45,10 +45,13 @@
+     let duration = mtime.duration_since(UNIX_EPOCH).unwrap_or_default();
+     hasher.update(duration.as_secs().to_le_bytes());
+     hasher.update(duration.subsec_nanos().to_le_bytes());
+-    hasher
+-        .finalize()
+-        .as_slice()
+-        .iter()
+-        .map(|byte| format!("{byte:02x}"))
+-        .collect()
++    let hash = hasher.finalize();
++    // OPTIMIZATION: Avoid repeated `format!` and iterator allocation in FUSE hot paths.
++    // Use a pre-allocated String with a lookup table to quickly hex-encode the hash.
++    let mut key = String::with_capacity(64);
++    for byte in hash {
++        key.push(b"0123456789abcdef"[(byte >> 4) as usize] as char);
++        key.push(b"0123456789abcdef"[(byte & 0x0f) as usize] as char);
++    }
++    key
+ }
