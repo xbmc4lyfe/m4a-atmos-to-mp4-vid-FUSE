@@ -42,12 +42,16 @@ pub fn cache_key(path: &Path, size: u64, mtime: SystemTime) -> String {
     let duration = mtime.duration_since(UNIX_EPOCH).unwrap_or_default();
     hasher.update(duration.as_secs().to_le_bytes());
     hasher.update(duration.subsec_nanos().to_le_bytes());
-    hasher
-        .finalize()
-        .as_slice()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+    let hash = hasher.finalize();
+
+    // Bolt optimization: Pre-allocate string and avoid format! in hot path
+    const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
+    let mut result = String::with_capacity(64);
+    for byte in hash.as_slice() {
+        result.push(HEX_CHARS[(byte >> 4) as usize] as char);
+        result.push(HEX_CHARS[(byte & 0xf) as usize] as char);
+    }
+    result
 }
 
 pub struct TranscodeCache {
@@ -66,10 +70,12 @@ impl TranscodeCache {
     }
 
     pub fn cached_path(&self, item: &MediaItem) -> PathBuf {
-        self.cache_dir.join(format!(
-            "{}.mkv",
-            cache_key(&item.source_path, item.size, item.mtime)
-        ))
+        let key = cache_key(&item.source_path, item.size, item.mtime);
+        // Bolt optimization: Pre-allocate string to avoid dynamic allocation during format!
+        let mut file_name = String::with_capacity(key.len() + 4);
+        file_name.push_str(&key);
+        file_name.push_str(".mkv");
+        self.cache_dir.join(file_name)
     }
 
     pub fn cached_path_if_exists(&self, item: &MediaItem) -> Option<PathBuf> {
