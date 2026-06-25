@@ -42,12 +42,21 @@ pub fn cache_key(path: &Path, size: u64, mtime: SystemTime) -> String {
     let duration = mtime.duration_since(UNIX_EPOCH).unwrap_or_default();
     hasher.update(duration.as_secs().to_le_bytes());
     hasher.update(duration.subsec_nanos().to_le_bytes());
-    hasher
-        .finalize()
-        .as_slice()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+    let hash = hasher.finalize();
+    let hash_bytes = hash.as_slice();
+
+    // PERFORMANCE OPTIMIZATION:
+    // This function is called frequently (for each file stat/open/read).
+    // Avoiding `format!` and iterator allocation prevents repeated dynamic memory allocations.
+    // Instead, pre-allocate the exact string length needed (64 characters for SHA256)
+    // and use a bitwise lookup table for hex encoding.
+    const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
+    let mut hex_str = String::with_capacity(hash_bytes.len() * 2);
+    for &byte in hash_bytes {
+        hex_str.push(HEX_CHARS[(byte >> 4) as usize] as char);
+        hex_str.push(HEX_CHARS[(byte & 0xf) as usize] as char);
+    }
+    hex_str
 }
 
 pub struct TranscodeCache {
