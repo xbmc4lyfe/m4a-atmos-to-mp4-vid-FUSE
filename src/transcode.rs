@@ -33,6 +33,8 @@ impl CommandRunner for RealCommandRunner {
     }
 }
 
+const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
+
 pub fn cache_key(path: &Path, size: u64, mtime: SystemTime) -> String {
     let mut hasher = Sha256::new();
     hasher.update(path.as_os_str().as_encoded_bytes());
@@ -42,12 +44,18 @@ pub fn cache_key(path: &Path, size: u64, mtime: SystemTime) -> String {
     let duration = mtime.duration_since(UNIX_EPOCH).unwrap_or_default();
     hasher.update(duration.as_secs().to_le_bytes());
     hasher.update(duration.subsec_nanos().to_le_bytes());
-    hasher
-        .finalize()
-        .as_slice()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+
+    // Performance optimization: Avoid dynamic memory allocations from `format!`
+    // on extreme hot FUSE paths (accessed heavily in `getattr`/`read`)
+    // by using a pre-allocated string and custom bitwise hex lookup table.
+    let hash = hasher.finalize();
+    let slice = hash.as_slice();
+    let mut result = String::with_capacity(slice.len() * 2);
+    for &byte in slice {
+        result.push(HEX_CHARS[(byte >> 4) as usize] as char);
+        result.push(HEX_CHARS[(byte & 0x0f) as usize] as char);
+    }
+    result
 }
 
 pub struct TranscodeCache {
