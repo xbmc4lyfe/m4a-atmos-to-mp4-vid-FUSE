@@ -42,12 +42,27 @@ pub fn cache_key(path: &Path, size: u64, mtime: SystemTime) -> String {
     let duration = mtime.duration_since(UNIX_EPOCH).unwrap_or_default();
     hasher.update(duration.as_secs().to_le_bytes());
     hasher.update(duration.subsec_nanos().to_le_bytes());
-    hasher
-        .finalize()
-        .as_slice()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+
+    // Performance optimization: Avoid dynamic allocation in `format!`
+    // by using a pre-allocated string and bitwise lookups.
+    let hash = hasher.finalize();
+    let slice = hash.as_slice();
+    let mut hex_string = String::with_capacity(slice.len() * 2);
+    for &byte in slice {
+        let b1 = byte >> 4;
+        let b2 = byte & 0xf;
+        hex_string.push(if b1 < 10 {
+            (b'0' + b1) as char
+        } else {
+            (b'a' + b1 - 10) as char
+        });
+        hex_string.push(if b2 < 10 {
+            (b'0' + b2) as char
+        } else {
+            (b'a' + b2 - 10) as char
+        });
+    }
+    hex_string
 }
 
 pub struct TranscodeCache {
