@@ -42,12 +42,17 @@ pub fn cache_key(path: &Path, size: u64, mtime: SystemTime) -> String {
     let duration = mtime.duration_since(UNIX_EPOCH).unwrap_or_default();
     hasher.update(duration.as_secs().to_le_bytes());
     hasher.update(duration.subsec_nanos().to_le_bytes());
-    hasher
-        .finalize()
-        .as_slice()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+    // PERFORMANCE OPTIMIZATION:
+    // Avoid dynamic allocations via format! in a hot path mapping
+    // by using pre-allocated String and bitwise lookup for hex encoding
+    let hash = hasher.finalize();
+    const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
+    let mut hex_string = String::with_capacity(64);
+    for &byte in hash.as_slice() {
+        hex_string.push(HEX_CHARS[(byte >> 4) as usize] as char);
+        hex_string.push(HEX_CHARS[(byte & 0x0f) as usize] as char);
+    }
+    hex_string
 }
 
 pub struct TranscodeCache {
