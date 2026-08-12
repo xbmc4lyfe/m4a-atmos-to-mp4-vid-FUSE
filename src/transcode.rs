@@ -42,12 +42,20 @@ pub fn cache_key(path: &Path, size: u64, mtime: SystemTime) -> String {
     let duration = mtime.duration_since(UNIX_EPOCH).unwrap_or_default();
     hasher.update(duration.as_secs().to_le_bytes());
     hasher.update(duration.subsec_nanos().to_le_bytes());
-    hasher
-        .finalize()
-        .as_slice()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+    // ⚡ Bolt Optimization: Use pre-allocated string and custom bitwise hex conversion
+    // instead of dynamic allocations with format! inside map.
+    // The resulting Sha256 hash is 32 bytes, which means a 64 character hex string.
+    let hash = hasher.finalize();
+    let slice = hash.as_slice();
+    let mut hex_string = String::with_capacity(slice.len() * 2);
+
+    const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
+    for &byte in slice {
+        hex_string.push(HEX_CHARS[(byte >> 4) as usize] as char);
+        hex_string.push(HEX_CHARS[(byte & 0x0f) as usize] as char);
+    }
+
+    hex_string
 }
 
 pub struct TranscodeCache {
